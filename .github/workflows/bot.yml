@@ -1,0 +1,28 @@
+name: تشغيل بوت تيليجرام
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: تحميل الكود
+        uses: actions/checkout@v4
+
+      - name: تثبيت Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: تثبيت المكتبات
+        run: pip install -r requirements.txt
+
+      - name: تشغيل البوت
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: python bot.py
