@@ -1,103 +1,89 @@
 import os
-
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_USERNAME = "@w24symedad"
-
-
-async def is_subscribed(user_id, context):
-    try:
-        member = await context.bot.get_chat_member(
-            CHANNEL_USERNAME,
-            user_id
-        )
-        return member.status in ["member", "administrator", "creator"]
-    except Exception:
-        return False
-
-
-def buttons():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📢 اشترك بالقناة",
-                url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "✅ تحقّق من الاشتراك",
-                callback_data="check"
-            )
-        ]
-    ])
+# ضع توكن البوت في Secrets باسم BOT_TOKEN
+TOKEN = os.getenv("BOT_TOKEN")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None:
+        return
+
     await update.message.reply_text(
-        "👋 أهلاً بك\n\n"
-        "🔒 لاستخدام البوت يجب الاشتراك بقناتنا أولاً.\n\n"
-        "بعد الاشتراك اضغط «تحقّق من الاشتراك» ثم أرسل الفيديو.",
-        reply_markup=buttons()
+        "أهلاً بك 👋\n"
+        "أرسل لي فيديو وسأستقبله."
     )
-
-
-async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if await is_subscribed(query.from_user.id, context):
-        await query.edit_message_text(
-            "✅ تم التحقق من اشتراكك!\n\n"
-            "📥 الآن أرسل الفيديو."
-        )
-    else:
-        await query.edit_message_text(
-            "❌ لم تشترك بالقناة بعد.\n\n"
-            "اشترك ثم اضغط «تحقّق من الاشتراك».",
-            reply_markup=buttons()
-        )
 
 
 async def receive_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if not await is_subscribed(user_id, context):
-        await update.message.reply_text(
-            "🔒 يجب الاشتراك بالقناة أولاً.",
-            reply_markup=buttons()
-        )
+    # بعض تحديثات تيليغرام قد لا يكون معها مستخدم
+    if update.effective_user is None:
         return
 
-    await update.message.reply_text("⏳ جاري إرسال الفيديو...")
+    # نتأكد أن الرسالة موجودة
+    if update.message is None:
+        return
 
-    await update.message.reply_video(
-        video=update.message.video.file_id,
-        caption="✅ تفضل الفيديو"
-    )
+    user_id = update.effective_user.id
+
+    # إذا كان المستخدم أرسل فيديو
+    if update.message.video:
+        video = update.message.video
+
+        await update.message.reply_text(
+            f"تم استلام الفيديو ✅\n"
+            f"معرّف المستخدم: {user_id}\n"
+            f"حجم الفيديو: {video.file_size or 'غير معروف'} بايت"
+        )
+
+    # إذا أرسل فيديو كملف
+    elif update.message.document:
+        await update.message.reply_text(
+            "تم استلام الملف ✅"
+        )
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"حدث خطأ: {context.error}")
 
 
 def main():
-    if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN غير موجود في أسرار GitHub")
+    if not TOKEN:
+        raise ValueError(
+            "لم يتم العثور على BOT_TOKEN. "
+            "أضف التوكن في Secrets باسم BOT_TOKEN."
+        )
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(check, pattern="^check$"))
-    app.add_handler(MessageHandler(filters.VIDEO, receive_video))
+    # أمر /start
+    application.add_handler(
+        CommandHandler("start", start)
+    )
 
-    print("البوت يعمل...")
-    app.run_polling()
+    # استقبال الفيديو
+    application.add_handler(
+        MessageHandler(
+            filters.VIDEO | filters.Document.VIDEO,
+            receive_video
+        )
+    )
+
+    # معالجة الأخطاء
+    application.add_error_handler(error_handler)
+
+    print("البوت يعمل الآن...")
+
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES
+    )
 
 
 if __name__ == "__main__":
